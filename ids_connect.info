@@ -1,0 +1,7 @@
+name = iPlant DataStore Connect
+description = Users can configure the iPlant DataStore as a system available to them in the Araport Agave tenant.
+package = Araport
+version = VERSION
+core = 7.x
+
+dependencies[] = agave

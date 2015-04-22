@@ -1,0 +1,160 @@
+<?php
+
+function ids_connect_menu() {
+  $items['user/%user/ids-connect'] = array(
+    'description' => 'Access your iPlant DataStore in Araport',
+    'title' => 'iPlant DataStore',
+    'type' => MENU_LOCAL_TASK,
+    'page callback' => 'ids_connect_status',
+    'page arguments' => array(1),
+    'access arguments' => array(1),
+    'access callback' => 'ids_connect_access'
+  );
+  return $items;
+}
+
+function ids_connect_theme() {
+  $template_path = drupal_get_path('module', 'ids_connect'). '/theme';
+  return array(
+    'ids_connect_intro' => array(
+      'template' => 'intro',
+      'path' => $template_path,
+    ),
+  );
+}
+
+function ids_connect_access($account) {
+  global $user;
+  if ($user->uid == $account->uid ) {
+    return true;
+  }
+  return false;
+}
+
+function ids_connect_status($account) {
+  //drupal_add_js(drupal_get_path('module', 'ids_connect') . '/js/ids_connect.js', 'file');
+
+  $output = array(
+    'intro' => array(
+      '#theme' => 'ids_intro',
+    ),
+  );
+
+  $configured = false;
+  $ids_system_name = 'araport-iplantds-'.$account->name;
+
+  $token = agave_load_api_token($account);
+  if ($token && $token->isValid()) {
+    $client = new APIClient($token->getAccessToken(), variable_get('agave_tenant_base_url', ''));
+
+    $ids_system;
+    try {
+      $ids_system = $client->callAPI('/systems/v2/'.$ids_system_name);
+      if ($ids_system->status == 'error') {
+        $ids_system = null;
+        $output['error'] = array(
+          '#markup' => t('You have not configured your iPlant DataStore. Enter your iPlant username and password below to configure your iPlant DataStore.')
+        , '#prefix' => '<div class="alert alert-warning">'
+        , '#suffix' => '</div>'
+        );
+      }
+    } catch (Exception $e) {
+      $output['error'] = array(
+        '#markup' => t('There was an error communicating with the API. Please try again later.')
+      , '#prefix' => '<div class="alert alert-danger">'
+      , '#suffix' => '</div>'
+      );
+    }
+
+    if ($ids_system) {
+      try {
+        $ids_files = $client->callAPI('/files/v2/'.$ids_system_name.'//');
+        error_log(print_r($ids_files, 1));
+      } catch (Exception $e) {
+        $output['error'] = array(
+          '#markup' => t('The username or password for your iPlant DataStore is incorrect. Enter your iPlant username and password below to configure your iPlant DataStore.')
+        , '#prefix' => '<div class="alert alert-warning">'
+        , '#suffix' => '</div>'
+        );
+      }
+    }
+  } else {
+    $output['error'] = array(
+      '#markup' => t('Invalid token! Please log out of Araport and then and back in to try again.')
+    , '#prefix' => '<div class="alert alert-danger">'
+    , '#suffix' => '</div>'
+    );
+  }
+
+  if ($configured) {
+    $output['configuration'] = array(
+      '#markup' => '<p class="lead">Your iPlant DataStore is correctly configured for Araport!</p>'
+    );
+  } else {
+    $output['configuration'] = drupal_get_form('ids_connect_form');
+  }
+
+  return $output;
+}
+
+function ids_connect_form($form, &$form_state) {
+  $form['username'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Your iPlant Username'),
+    '#attributes' => array('placeholder' => 'iPlant Username'),
+    '#required' => true,
+  );
+  $form['password'] = array(
+    '#type' => 'password',
+    '#title' => t('Your iPlant Password'),
+    '#attributes' => array('placeholder' => 'iPlant Password'),
+    '#required' => true,
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Connect iPlant DataStore'),
+    '#attributes' => array('class' => array('btn-primary')),
+  );
+  return $form;
+}
+
+function ids_connect_form_submit($form, &$form_state) {
+  global $user;
+
+  $system_record = ids_connect_template_system_record($user->name, $form_state['values']['username'], $form_state['values']['password']);
+  error_log(json_encode($system_record));
+
+  $token = agave_load_api_token($user);
+  $client = new APIClient($token->getAccessToken(), variable_get('agave_tenant_base_url', ''));
+  $response = $client->callAPI('/systems/v2/', 'POST', array(), json_encode($system_record));
+  error_log(json_encode($response));
+
+  form_set_error('username', 'error');
+  $form_state['rebuild'] = true;
+  $form_state['error'] = true;
+}
+
+function ids_connect_template_system_record($username, $ipun, $ippwd) {
+  return array(
+    "id" => "araport-iplantds-$username",
+    "name" => "iPlant DataStore",
+    "status" => "UP",
+    "type" => "STORAGE",
+    "description" => "Connection to the iPlant DataStore",
+    "site" => "iplantcollaborative.org",
+    "storage" => array(
+      "host" => "data.iplantcollaborative.org",
+      "port" => 1247,
+      "protocol" => "IRODS",
+      "rootDir" => "/iplant/home/$ipun",
+      "zone" => "iplant",
+      "resource"  => "bitol",
+      "auth" => array(
+        "username" => "$ipun",
+        "password" => "$ippwd",
+        "type" => "PASSWORD"
+      )
+    ),
+    "default" => false
+  );
+}
