@@ -174,8 +174,8 @@ function ids_connect_template_system_record($username, $ipun, $ippwd) {
       "host" => "data.iplantcollaborative.org",
       "port" => 1247,
       "protocol" => "IRODS",
-      "rootDir" => "/iplant/home",
-      "homeDir" => "/$ipun",
+      "rootDir" => "/iplant/home/$ipun",
+      "homeDir" => "/",
       "zone" => "iplant",
       "resource"  => "bitol",
       "auth" => array(
